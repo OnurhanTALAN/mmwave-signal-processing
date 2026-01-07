@@ -41,7 +41,7 @@ end
 
 RSTD.Sleep(1000)
 
-if (ar1.DataPathConfig(1, 1, 0) == 0) then
+if (ar1.DataPathConfig(513, 1216644097, 0) == 0) then
     WriteToLog("DataPathConfig Success\n", "green")
 else
     WriteToLog("DataPathConfig failure\n", "red")
@@ -72,7 +72,7 @@ else
 end
 
 frame_num = 25
-chirp_num = 32
+chirp_num = 64
 period = 20
 
 if (ar1.FrameConfig(0, 0, frame_num, chirp_num, period, 0, 0, 1) == 0) then
@@ -127,34 +127,128 @@ end
 -- RSTD.Sleep(10000)
 
 
-environments = {"full-speed", "closed", "medium-speed"}
--- toplam kayıt süresi
-ms_per_environment = 1 * 60 * 1000 -- 10 minutes
--- her bir kayıt süresi
-ms_per_record = frame_num * period 
--- total kayıt süresi / her bir kayıt süresi = toplam kayıt sayısı
-number_of_records = math.floor(ms_per_environment / ms_per_record) 
+-- ============================================================
+-- RECORDING CONFIGURATION
+-- ============================================================
+-- Total recording time: 5 minutes = 300,000 ms
+-- Each file duration: 0.5 seconds = 500 ms
+-- Frames per file: 500ms / 20ms = 25 frames
+-- Total files: 300,000ms / 500ms = 600 files
+-- ============================================================
 
+-- ============================================================
+-- RECORDING CONFIGURATION
+-- ============================================================
+-- Total recording time: 20 minutes = 1200000 ms
+-- Each file duration: 0.5 seconds = 500 ms
+-- Frames per file: 500ms / 20ms = 25 frames
+-- Total files: 1200000ms / 500ms = 2400 files
+-- ============================================================
 
-for _, environment in ipairs(environments) do
-    
-    print("Vibration motor status " .. environment)
-    print("Number of runs " .. number_of_records)
+-- Recording parameters (must match FrameConfig above)
+ms_per_record = frame_num * period  -- 25 frames * 20ms = 500ms per recording
 
-    -- her bir kayıt için
-    for i = 1, number_of_records, 1 do
-        -- kayıt dosya pathi
-        adc_data_path = "C:\\ti\\mmwave_studio_02_01_01_00\\mmWaveStudio\\PostProc\\pipe-vibration\\" ..environment.. "\\adc_data_" ..i.. ".bin" 
-        ar1.CaptureCardConfig_StartRecord(adc_data_path, 1)
-        RSTD.Sleep(1000)
-        
-        -- frame başlat
-        ar1.StartFrame()
-        -- kayıt süresi kadar sleep
-        RSTD.Sleep(ms_per_record)
+-- Total number of 0.5 second recordings
+number_of_records = 2400
 
+-- Output directory
+output_dir = "C:\\ti\\mmwave_studio_02_01_01_00\\mmWaveStudio\\PostProc\\pipe-vibration\\full-speed\\"
+
+-- ============================================================
+-- MOTOR CONTROL CONFIGURATION
+-- ============================================================
+-- Signal file path (Python helper monitors this file)
+-- Run: python motor_serial.py COM3 (before starting this script)
+-- ============================================================
+motor_signal_file = "C:\\ti\\mmwave_studio_02_01_01_00\\mmWaveStudio\\PostProc\\motor_signal.txt"
+
+-- Function to control motor via signal file
+function setMotor(state)
+    local file = io.open(motor_signal_file, "w")
+    if file then
+        file:write(state)
+        file:close()
+        WriteToLog("Motor signal: " .. state .. "\n", "blue")
+    else
+        WriteToLog("WARNING: Could not write motor signal file!\n", "red")
     end
 end
+
+-- Function to turn motor ON
+function motorOn()
+    setMotor("ON")
+end
+
+-- Function to turn motor OFF
+function motorOff()
+    setMotor("OFF")
+end
+
+-- Function to exit motor control (call at end of script)
+function motorExit()
+    setMotor("EXIT")
+end
+
+print("============================================================")
+print("Starting " .. number_of_records .. " recordings")
+print("Each recording: " .. ms_per_record .. " ms (" .. frame_num .. " frames)")
+print("Total time: " .. (number_of_records * ms_per_record / 1000 / 60) .. " minutes")
+print("")
+print("MOTOR CONTROL ENABLED")
+print("Ensure Python helper is running: python motor_serial.py COM3")
+print("============================================================")
+
+-- Initial motor state: OFF
+motorOff()
+RSTD.Sleep(500)
+
+for i = 1, number_of_records, 1 do
+    -- File path for this recording
+    adc_data_path = output_dir .. "adc_data_" .. i .. ".bin"
+    
+    print("=== Recording " .. i .. "/" .. number_of_records .. " ===")
+    
+    -- MOTOR OFF during file saving/setup
+    motorOff()
+    
+    -- Start recording to file
+    if (ar1.CaptureCardConfig_StartRecord(adc_data_path, 1) == 0) then
+        WriteToLog("StartRecord Success: " .. i .. "/" .. number_of_records .. "\n", "green")
+    else
+        WriteToLog("StartRecord FAILED: " .. i .. "\n", "red")
+    end
+    RSTD.Sleep(500)
+    
+    -- MOTOR ON before frame capture (vibration during recording)
+    motorOn()
+    RSTD.Sleep(100)  -- Small delay to ensure motor is running
+    
+    -- Trigger frame capture
+    if (ar1.StartFrame() == 0) then
+        WriteToLog("StartFrame Success\n", "green")
+    else
+        WriteToLog("StartFrame FAILED\n", "red")
+    end
+    
+    -- Wait for frame capture to complete
+    RSTD.Sleep(ms_per_record + 500)
+    
+    -- MOTOR OFF after recording (rest period while saving)
+    motorOff()
+    
+    -- Wait for file to be saved
+    RSTD.Sleep(1500)
+end
+
+-- Final motor off and exit signal
+motorOff()
+RSTD.Sleep(500)
+motorExit()
+
+print("============================================================")
+print("Recording complete! " .. number_of_records .. " files saved.")
+print("Motor control stopped.")
+print("============================================================")
 
 -- 0.5 saniye 1 loop
 -- 2 saniye sleep her rundan sonra
