@@ -202,7 +202,7 @@ print("============================================================")
 motorOff()
 RSTD.Sleep(500)
 
-for i = 1065, number_of_records, 1 do
+for i = 1, number_of_records, 1 do
     -- File path for this recording
     adc_data_path = output_dir .. "adc_data_" .. i .. ".bin"
     
