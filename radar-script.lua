@@ -71,7 +71,7 @@ else
     WriteToLog("ChirpConfig failure\n", "red")
 end
 
-frame_num = 25
+frame_num = 100
 chirp_num = 64
 period = 20
 
@@ -146,13 +146,13 @@ end
 -- ============================================================
 
 -- Recording parameters (must match FrameConfig above)
-ms_per_record = frame_num * period  -- 25 frames * 20ms = 500ms per recording
+ms_per_record = frame_num * period  -- 100 frames * 20ms = 2000ms per recording
 
--- Total number of 0.5 second recordings
+-- Total number of 2 second recordings
 number_of_records = 2400
 
 -- Output directory
-output_dir = "C:\\ti\\mmwave_studio_02_01_01_00\\mmWaveStudio\\PostProc\\pipe-vibration\\full-speed\\"
+output_dir = "C:\\ti\\mmwave_studio_02_01_01_00\\mmWaveStudio\\PostProc\\pipe-vibration\\increasing-speed\\"
 
 -- ============================================================
 -- MOTOR CONTROL CONFIGURATION
@@ -202,7 +202,7 @@ print("============================================================")
 motorOff()
 RSTD.Sleep(500)
 
-for i = 1065, number_of_records, 1 do
+for i = 1, number_of_records, 1 do
     -- File path for this recording
     adc_data_path = output_dir .. "adc_data_" .. i .. ".bin"
     

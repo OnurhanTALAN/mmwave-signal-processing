@@ -19,14 +19,18 @@ const int MOTOR_IN1 = 9;     // Direction pin 1
 const int MOTOR_IN2 = 8;     // Direction pin 2
 const int MOTOR_ENA = 10;    // Enable/PWM pin
 
-// Motor speed (0-255), adjust for your vibration motor
-const int MOTOR_SPEED = 255;
+// Motor speed settings
+const int START_SPEED = 64;
+const int TARGET_SPEED = 255;
+const unsigned long RAMP_DURATION = 2000; // 2000ms = 2 seconds
 
 // LED for status indication
 const int STATUS_LED = 13;
 
 // Motor state
 bool motorRunning = false;
+bool isRamping = false;
+unsigned long rampStartTime = 0;
 
 void setup() {
   // Initialize serial communication
@@ -87,6 +91,22 @@ void loop() {
         break;
     }
   }
+
+  // Handle Motor Speed Ramping
+  if (motorRunning && isRamping) {
+    unsigned long currentTime = millis();
+    unsigned long elapsed = currentTime - rampStartTime;
+
+    if (elapsed < RAMP_DURATION) {
+      // Linearly increase speed from START_SPEED to TARGET_SPEED
+      int currentSpeed = map(elapsed, 0, RAMP_DURATION, START_SPEED, TARGET_SPEED);
+      analogWrite(MOTOR_ENA, currentSpeed);
+    } else {
+      // Ramp finished, maintain target speed
+      analogWrite(MOTOR_ENA, TARGET_SPEED);
+      isRamping = false;
+    }
+  }
 }
 
 void startMotor() {
@@ -94,13 +114,17 @@ void startMotor() {
   digitalWrite(MOTOR_IN1, HIGH);
   digitalWrite(MOTOR_IN2, LOW);
   
-  // Set speed via PWM
-  analogWrite(MOTOR_ENA, MOTOR_SPEED);
+  // Set initial speed
+  analogWrite(MOTOR_ENA, START_SPEED);
   
   // Status LED ON
   digitalWrite(STATUS_LED, HIGH);
   
   motorRunning = true;
+  
+  // Initialize Ramping
+  isRamping = true;
+  rampStartTime = millis();
 }
 
 void stopMotor() {
@@ -113,4 +137,5 @@ void stopMotor() {
   digitalWrite(STATUS_LED, LOW);
   
   motorRunning = false;
+  isRamping = false;
 }
