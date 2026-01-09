@@ -152,7 +152,7 @@ ms_per_record = frame_num * period  -- 100 frames * 20ms = 2000ms per recording
 number_of_records = 2400
 
 -- Output directory
-output_dir = "C:\\ti\\mmwave_studio_02_01_01_00\\mmWaveStudio\\PostProc\\pipe-vibration\\increasing-speed\\"
+output_dir = "C:\\ti\\mmwave_studio_02_01_01_00\\mmWaveStudio\\PostProc\\pipe-vibration\\decreasing-speed\\"
 
 -- ============================================================
 -- MOTOR CONTROL CONFIGURATION
