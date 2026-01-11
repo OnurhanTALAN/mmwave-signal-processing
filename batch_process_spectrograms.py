@@ -8,65 +8,52 @@ from spectrogram_generator import generate_spectrogram
 
 def process_all_spectrograms(
     input_base_dir="pipe-vibration",
-    output_base_dir="spectrograms-output",
-    num_frames=25,
+    output_base_dir="spectrograms-output\\underground-pipe-vibration-2s",
+    subdirs=("decreasing-vibration", "increasing-vibration", "no-vibration", "full-vibration"),
+    num_frames=100,
     num_rx=4,
     num_chirps=64,
     num_samples=256,
     chirp_period=20,
     n_fft=4096,
-    hop_length=256
+    hop_length=256,
+    trim_sec=0.15,
+    max_freq=512
 ):
     """
-    Process all radar recordings in the specified directories and save spectrograms.
-    
-    Parameters:
-    -----------
-    input_base_dir : str
-        Base directory containing 'closed' and 'full-speed' subdirectories
-    output_base_dir : str
-        Directory to save the generated spectrograms
+    Batch spectrogram generation with array-level
+    time and frequency trimming.
     """
-    # Define subdirectories to process
-    subdirs = ["closed", "full-speed"]
-    
-    # Create output directory if it doesn't exist
+
     os.makedirs(output_base_dir, exist_ok=True)
-    
-    # Statistics
+
     total_processed = 0
     total_failed = 0
-    
-    # Process each subdirectory
+
     for subdir in subdirs:
         input_dir = os.path.join(input_base_dir, subdir)
         output_dir = os.path.join(output_base_dir, subdir)
-        
-        # Check if input directory exists
+
         if not os.path.exists(input_dir):
-            print(f"⚠️  Warning: Directory {input_dir} does not exist, skipping...")
+            print(f"Warning: {input_dir} does not exist, skipping.")
             continue
-        
-        # Create output subdirectory
+
         os.makedirs(output_dir, exist_ok=True)
-        
-        # Find all .bin files
-        pattern = os.path.join(input_dir, "*.bin")
-        bin_files = glob.glob(pattern)
-        
+
+        bin_files = glob.glob(os.path.join(input_dir, "*.bin"))
+
         if not bin_files:
-            print(f"⚠️  Warning: No .bin files found in {input_dir}")
+            print(f"Warning: No .bin files found in {input_dir}")
             continue
-        
+
         print(f"\n{'='*60}")
         print(f"Processing: {subdir}")
         print(f"Found {len(bin_files)} files")
         print(f"{'='*60}\n")
-        
-        # Process each file
-        for file_path in tqdm(bin_files, desc=f"Processing {subdir}", unit="file"):
+
+        for file_path in tqdm(bin_files, desc=f"{subdir}", unit="file"):
             try:
-                # Generate spectrogram
+                # --- Generate full spectrogram ---
                 S_db, Fs = generate_spectrogram(
                     file_path=file_path,
                     num_frames=num_frames,
@@ -77,34 +64,44 @@ def process_all_spectrograms(
                     n_fft=n_fft,
                     hop_length=hop_length
                 )
-                
-                # Create output filename
-                base_name = Path(file_path).stem  # Get filename without extension
-                output_file = os.path.join(output_dir, f"{base_name}_spectrogram.npy")
-                
-                # Save spectrogram as numpy array
+
+                # --- Time trimming (array-level) ---
+                frame_duration = hop_length / Fs
+                trim_frames = int(trim_sec / frame_duration)
+
+                S_db = S_db[:, trim_frames:-trim_frames]
+
+                # --- Frequency trimming (0–max_freq Hz) ---
+                freq_resolution = Fs / n_fft
+                max_bin = int(max_freq / freq_resolution)
+
+                S_db = S_db[:max_bin, :]
+
+                # --- Save ---
+                base_name = Path(file_path).stem
+                output_file = os.path.join(
+                    output_dir,
+                    f"{base_name}_spectrogram.npy"
+                )
+
                 np.save(output_file, S_db)
-                
                 total_processed += 1
-                
+
             except Exception as e:
-                print(f"\n❌ Error processing {file_path}: {str(e)}")
+                print(f"\nError processing {file_path}: {e}")
                 total_failed += 1
-                continue
-    
-    # Print summary
+
+    # --- Summary ---
     print(f"\n{'='*60}")
-    print(f"PROCESSING COMPLETE")
+    print("PROCESSING COMPLETE")
     print(f"{'='*60}")
-    print(f"✅ Successfully processed: {total_processed} files")
-    print(f"❌ Failed: {total_failed} files")
-    print(f"📁 Output directory: {output_base_dir}")
+    print(f"Successfully processed: {total_processed}")
+    print(f"Failed: {total_failed}")
+    print(f"Output directory: {output_base_dir}")
     print(f"{'='*60}\n")
-    
-    # Save metadata
+
+    # --- Metadata ---
     metadata = {
-        "total_processed": total_processed,
-        "total_failed": total_failed,
         "num_frames": num_frames,
         "num_rx": num_rx,
         "num_chirps": num_chirps,
@@ -112,25 +109,33 @@ def process_all_spectrograms(
         "chirp_period": chirp_period,
         "n_fft": n_fft,
         "hop_length": hop_length,
+        "trim_sec": trim_sec,
+        "max_freq": max_freq,
         "input_base_dir": input_base_dir,
-        "subdirectories": subdirs
+        "subdirectories": subdirs,
+        "total_processed": total_processed,
+        "total_failed": total_failed
     }
-    
-    metadata_file = os.path.join(output_base_dir, "processing_metadata.npy")
-    np.save(metadata_file, metadata)
-    print(f"📝 Metadata saved to: {metadata_file}")
 
+    np.save(os.path.join(output_base_dir, "processing_metadata.npy"), metadata)
 
 if __name__ == "__main__":
-    # Run batch processing with specified configuration
     process_all_spectrograms(
-        input_base_dir="pipe-vibration",
-        output_base_dir="spectrograms-output",
-        num_frames=25,
+        input_base_dir="pipe-vibration/underground-pipe-vibration-2s",
+        output_base_dir="spectrograms-output/underground-pipe-vibration-2s",
+        subdirs=(
+            "decreasing-vibration",
+            "increasing-vibration",
+            "no-vibration",
+            "full-vibration"
+        ),
+        num_frames=110,
         num_rx=4,
         num_chirps=64,
         num_samples=256,
         chirp_period=20,
         n_fft=4096,
-        hop_length=256
+        hop_length=256,
+        trim_sec=0.15,
+        max_freq=512
     )

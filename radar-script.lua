@@ -1,26 +1,3 @@
--- ADC_Data file path
--- info = debug.getinfo(1,'S');
--- file_path = (info.source);
--- file_path = string.gsub(file_path, "@","");
--- file_path = string.gsub(file_path, "DataCaptureDemo_xWR.lua","");
--- data_path     = file_path.."..\\PostProc"
--- adc_data_path = data_path.."\\adc_datatest2.bin"
--- partId = 1843
-
--- Define the Python script you want to run
--- local pythonScript = "python C:\\ti\\mmwave_studio_02_01_01_00\\mmWaveStudio\\Scripts\\main_script.py"
--- Function to run the Python script
--- local function runPythonScript(testscript)
---     local result = os.execute(testscript)
-
--- 	if result == 0 then
--- 		print("Python script executed successfully")
--- 	else
--- 		print("Error executing Python script" .. result)
--- 	end
-
--- end
-
 if (ar1.ChanNAdcConfig(1, 0, 0, 1, 1, 1, 1, 2, 1, 0) == 0) then
     WriteToLog("ChanNAdcConfig Success\n", "green")
 else
@@ -108,11 +85,6 @@ else
     WriteToLog("CaptureCardConfig_PacketDelay failure\n", "red")
 end
 
-for i = 10,1,-1 
-do 	
-  print("-----------------------------------------------------")
-end
-
 --Start Record ADC data
 -- ar1.CaptureCardConfig_StartRecord(adc_data_path, 1)
 -- RSTD.Sleep(1000)
@@ -146,23 +118,15 @@ end
 -- ============================================================
 
 -- Recording parameters (must match FrameConfig above)
-ms_per_record = frame_num * period  -- 100 frames * 20ms = 2000ms per recording
-
--- Total number of 2 second recordings
+ms_per_record = frame_num * period
 number_of_records = 2400
 
--- Output directory
-output_dir = "C:\\ti\\mmwave_studio_02_01_01_00\\mmWaveStudio\\PostProc\\pipe-vibration\\decreasing-speed\\"
+-- Output directories
+output_dir_inc = "C:\\ti\\mmwave_studio_02_01_01_00\\mmWaveStudio\\PostProc\\pipe-vibration\\increasing-vibration\\"
+output_dir_dec = "C:\\ti\\mmwave_studio_02_01_01_00\\mmWaveStudio\\PostProc\\pipe-vibration\\decreasing-vibration\\"
 
--- ============================================================
--- MOTOR CONTROL CONFIGURATION
--- ============================================================
--- Signal file path (Python helper monitors this file)
--- Run: python motor_serial.py COM3 (before starting this script)
--- ============================================================
 motor_signal_file = "C:\\ti\\mmwave_studio_02_01_01_00\\mmWaveStudio\\PostProc\\motor_signal.txt"
 
--- Function to control motor via signal file
 function setMotor(state)
     local file = io.open(motor_signal_file, "w")
     if file then
@@ -174,90 +138,78 @@ function setMotor(state)
     end
 end
 
--- Function to turn motor ON
-function motorOn()
-    setMotor("ON")
+function motorInc()
+    setMotor("INC")
 end
 
--- Function to turn motor OFF
+function motorDec()
+    setMotor("DEC")
+end
+
 function motorOff()
     setMotor("OFF")
 end
 
--- Function to exit motor control (call at end of script)
 function motorExit()
     setMotor("EXIT")
 end
 
 print("============================================================")
-print("Starting " .. number_of_records .. " recordings")
-print("Each recording: " .. ms_per_record .. " ms (" .. frame_num .. " frames)")
-print("Total time: " .. (number_of_records * ms_per_record / 1000 / 60) .. " minutes")
-print("")
-print("MOTOR CONTROL ENABLED")
+print("Starting " .. number_of_records .. " paired recordings")
+print("Each recording: " .. ms_per_record .. " ms")
+print("Total files: " .. (number_of_records * 2))
 print("Ensure Python helper is running: python motor_serial.py COM3")
 print("============================================================")
 
--- Initial motor state: OFF
 motorOff()
 RSTD.Sleep(500)
 
-for i = 1, number_of_records, 1 do
-    -- File path for this recording
-    adc_data_path = output_dir .. "adc_data_" .. i .. ".bin"
-    
-    print("=== Recording " .. i .. "/" .. number_of_records .. " ===")
-    
-    -- MOTOR OFF during file saving/setup
+for i = 1, number_of_records do
+    print("=== Pair Recording " .. i .. "/" .. number_of_records .. " ===")
+
+    ------------------------------------------------------------------
+    -- INCREASING VIBRATION RECORD
+    ------------------------------------------------------------------
+    adc_data_path = output_dir_inc .. "adc_data_" .. i .. ".bin"
+
     motorOff()
-    
-    -- Start recording to file
-    if (ar1.CaptureCardConfig_StartRecord(adc_data_path, 1) == 0) then
-        WriteToLog("StartRecord Success: " .. i .. "/" .. number_of_records .. "\n", "green")
-    else
-        WriteToLog("StartRecord FAILED: " .. i .. "\n", "red")
-    end
+    ar1.CaptureCardConfig_StartRecord(adc_data_path, 1)
     RSTD.Sleep(500)
-    
-    -- MOTOR ON before frame capture (vibration during recording)
-    motorOn()
-    RSTD.Sleep(100)  -- Small delay to ensure motor is running
-    
-    -- Trigger frame capture
-    if (ar1.StartFrame() == 0) then
-        WriteToLog("StartFrame Success\n", "green")
-    else
-        WriteToLog("StartFrame FAILED\n", "red")
-    end
-    
-    -- Wait for frame capture to complete
+
+    motorInc()
+    RSTD.Sleep(100)
+
+    ar1.StartFrame()
     RSTD.Sleep(ms_per_record + 500)
-    
-    -- MOTOR OFF after recording (rest period while saving)
+
     motorOff()
-    
-    -- Wait for file to be saved
+    ar1.CaptureCardConfig_StopRecord()
+    RSTD.Sleep(1500)
+
+    ------------------------------------------------------------------
+    -- DECREASING VIBRATION RECORD
+    ------------------------------------------------------------------
+    adc_data_path = output_dir_dec .. "adc_data_" .. i .. ".bin"
+
+    motorOff()
+    ar1.CaptureCardConfig_StartRecord(adc_data_path, 1)
+    RSTD.Sleep(500)
+
+    motorDec()
+    RSTD.Sleep(100)
+
+    ar1.StartFrame()
+    RSTD.Sleep(ms_per_record + 500)
+
+    motorOff()
+    ar1.CaptureCardConfig_StopRecord()
     RSTD.Sleep(1500)
 end
 
--- Final motor off and exit signal
 motorOff()
 RSTD.Sleep(500)
 motorExit()
 
 print("============================================================")
-print("Recording complete! " .. number_of_records .. " files saved.")
-print("Motor control stopped.")
+print("Recording complete! " .. (number_of_records * 2) .. " files saved.")
 print("============================================================")
-
--- 0.5 saniye 1 loop
--- 2 saniye sleep her rundan sonra
-
--- 3 farklı senaryo
--- kapalı
--- full
--- orta hız
-
-
--- 20şer dk
--- 2400 kere aynı hızda kayıt
