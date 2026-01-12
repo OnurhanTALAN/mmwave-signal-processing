@@ -5,3 +5,5 @@ new data/
 new data/
 pipe-vibration
 spectrograms-output
+visualization-app/build/
+visualization-app/dist/
