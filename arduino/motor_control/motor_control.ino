@@ -39,7 +39,7 @@ void setup() {
   pinMode(STATUS_LED, OUTPUT);
   
   // Ensure motor is OFF at startup
-  stopMotor();
+  //stopMotor();
   
   // Flash LED to indicate ready
   for(int i = 0; i < 3; i++) {
@@ -53,6 +53,15 @@ void setup() {
 }
 
 void loop() {
+
+  digitalWrite(MOTOR_IN1, HIGH);
+  digitalWrite(MOTOR_IN2, LOW);
+  
+  // Set speed via PWM
+  analogWrite(MOTOR_ENA, MOTOR_SPEED);
+  
+
+  /*
   if (Serial.available() > 0) {
     char command = Serial.read();
     
@@ -113,4 +122,5 @@ void stopMotor() {
   digitalWrite(STATUS_LED, LOW);
   
   motorRunning = false;
+  */
 }
