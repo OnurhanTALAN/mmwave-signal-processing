@@ -15,11 +15,11 @@ const int MOTOR_ENA = 10;
 const int STATUS_LED = 13;
 
 // Speed profiles
-const int INC_START_SPEED = 255;
-const int INC_TARGET_SPEED = 64;
+const int INC_START_SPEED = 64;
+const int INC_TARGET_SPEED = 255;
 
-const int DEC_START_SPEED = 64;
-const int DEC_TARGET_SPEED = 255;
+const int DEC_START_SPEED = 255;
+const int DEC_TARGET_SPEED = 64;
 
 const unsigned long RAMP_DURATION = 2200;
 

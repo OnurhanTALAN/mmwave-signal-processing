@@ -10,7 +10,7 @@ def process_all_spectrograms(
     input_base_dir="pipe-vibration",
     output_base_dir="spectrograms-output\\underground-pipe-vibration-2s",
     subdirs=("decreasing-vibration", "increasing-vibration", "no-vibration", "full-vibration"),
-    num_frames=100,
+    num_frames=110,
     num_rx=4,
     num_chirps=64,
     num_samples=256,
@@ -126,8 +126,8 @@ if __name__ == "__main__":
         subdirs=(
             "decreasing-vibration",
             "increasing-vibration",
-            "no-vibration",
-            "full-vibration"
+            # "no-vibration",
+            # "full-vibration"
         ),
         num_frames=110,
         num_rx=4,

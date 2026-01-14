@@ -48,7 +48,7 @@ else
     WriteToLog("ChirpConfig failure\n", "red")
 end
 
-frame_num = 100
+frame_num = 110
 chirp_num = 64
 period = 20
 
@@ -122,8 +122,8 @@ ms_per_record = frame_num * period
 number_of_records = 2400
 
 -- Output directories
-output_dir_inc = "C:\\ti\\mmwave_studio_02_01_01_00\\mmWaveStudio\\PostProc\\pipe-vibration\\increasing-vibration\\"
-output_dir_dec = "C:\\ti\\mmwave_studio_02_01_01_00\\mmWaveStudio\\PostProc\\pipe-vibration\\decreasing-vibration\\"
+output_dir_inc = "C:\\ti\\mmwave_studio_02_01_01_00\\mmWaveStudio\\PostProc\\underground-pipe-vibration-2s\\increasing-vibration\\"
+output_dir_dec = "C:\\ti\\mmwave_studio_02_01_01_00\\mmWaveStudio\\PostProc\\underground-pipe-vibration-2s\\decreasing-vibration\\"
 
 motor_signal_file = "C:\\ti\\mmwave_studio_02_01_01_00\\mmWaveStudio\\PostProc\\motor_signal.txt"
 
@@ -155,9 +155,9 @@ function motorExit()
 end
 
 print("============================================================")
-print("Starting " .. number_of_records .. " paired recordings")
+print("Starting " .. number_of_records .. " recordings")
 print("Each recording: " .. ms_per_record .. " ms")
-print("Total files: " .. (number_of_records * 2))
+print("Total files: " .. number_of_records)
 print("Ensure Python helper is running: python motor_serial.py COM3")
 print("============================================================")
 
@@ -165,7 +165,7 @@ motorOff()
 RSTD.Sleep(500)
 
 for i = 1, number_of_records do
-    print("=== Pair Recording " .. i .. "/" .. number_of_records .. " ===")
+    print("=== Recording " .. i .. "/" .. number_of_records .. " ===")
 
     ------------------------------------------------------------------
     -- INCREASING VIBRATION RECORD
@@ -189,21 +189,21 @@ for i = 1, number_of_records do
     ------------------------------------------------------------------
     -- DECREASING VIBRATION RECORD
     ------------------------------------------------------------------
-    adc_data_path = output_dir_dec .. "adc_data_" .. i .. ".bin"
+    -- adc_data_path = output_dir_dec .. "adc_data_" .. i .. ".bin"
 
-    motorOff()
-    ar1.CaptureCardConfig_StartRecord(adc_data_path, 1)
-    RSTD.Sleep(500)
+    -- motorOff()
+    -- ar1.CaptureCardConfig_StartRecord(adc_data_path, 1)
+    -- RSTD.Sleep(500)
 
-    motorDec()
-    RSTD.Sleep(100)
+    -- motorDec()
+    -- RSTD.Sleep(100)
 
-    ar1.StartFrame()
-    RSTD.Sleep(ms_per_record + 500)
+    -- ar1.StartFrame()
+    -- RSTD.Sleep(ms_per_record + 500)
 
-    motorOff()
-    ar1.CaptureCardConfig_StopRecord()
-    RSTD.Sleep(1500)
+    -- motorOff()
+    -- ar1.CaptureCardConfig_StopRecord()
+    -- RSTD.Sleep(1500)
 end
 
 motorOff()
@@ -211,5 +211,5 @@ RSTD.Sleep(500)
 motorExit()
 
 print("============================================================")
-print("Recording complete! " .. (number_of_records * 2) .. " files saved.")
+print("Recording complete! " .. number_of_records .. " files saved.")
 print("============================================================")
