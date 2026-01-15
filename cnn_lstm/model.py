@@ -158,5 +158,5 @@ def create_cnn_lstm_model(input_shape=(163, 97, 1), dropout_rate=0.4, l2_reg=1e-
 
 if __name__ == "__main__":
     # Test model creation
-    model = create_cnn_lstm_model(input_shape=(163, 97, 1), dropout_rate=0.4)
+    model = create_cnn_lstm_model(input_shape=(163, 97, 1))
     model.summary()

@@ -10,12 +10,13 @@ import sys
 import os
 
 # Add parent directory to path for mmwave module
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+if not getattr(sys, 'frozen', False):
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from mmwave.dataloader import DCA1000
 from config import (
     FRAME_NUM, CHIRP_NUM, NUM_SAMPLES, NUM_RX, CHIRP_PERIOD,
-    N_FFT, HOP_LENGTH, TARGET_SHAPE
+    N_FFT, HOP_LENGTH, TARGET_SHAPE, TRIM_SECONDS, MAX_FREQ
 )
 
 
@@ -69,16 +70,29 @@ def generate_spectrogram(file_path: str) -> tuple:
     D = librosa.stft(flattened_frames, n_fft=N_FFT, hop_length=HOP_LENGTH)
     S_db = librosa.amplitude_to_db(np.abs(D), ref=np.max)
     
+    # Trim time (match offline processing)
+    if TRIM_SECONDS > 0:
+        frame_duration = HOP_LENGTH / Fs
+        trim_frames = int(TRIM_SECONDS / frame_duration)
+        if trim_frames > 0:
+            S_db = S_db[:, trim_frames:-trim_frames]
+            
+    # Trim frequency (0-512 Hz) - REMOVED from here to keep UI full spectrum
+    # if MAX_FREQ is not None:
+    #     freq_resolution = Fs / N_FFT
+    #     max_bin = int(MAX_FREQ / freq_resolution)
+    #     S_db = S_db[:max_bin, :]
+    
     return S_db, Fs
 
 
-def prepare_for_model(S_db: np.ndarray, mean: float, std: float) -> np.ndarray:
+def prepare_for_model(spectrogram: np.ndarray, mean: float, std: float) -> np.ndarray:
     """
-    Prepare spectrogram for model inference.
+    Prepare spectrogram for model inference (trim frequency, resize, normalize, add dims).
     
     Parameters:
     -----------
-    S_db : np.ndarray
+    spectrogram : np.ndarray
         Spectrogram in dB scale
     mean : float
         Normalization mean from training
@@ -91,16 +105,24 @@ def prepare_for_model(S_db: np.ndarray, mean: float, std: float) -> np.ndarray:
         Normalized spectrogram ready for model input
     """
     from scipy.ndimage import zoom
+
+    # 1. Frequency Trimming (0-512 Hz) for Model Only
+    if MAX_FREQ is not None:
+        # Re-calculate Fs to determine bins
+        Fs = NUM_SAMPLES * (1000 // CHIRP_PERIOD)
+        freq_resolution = Fs / N_FFT
+        max_bin = int(MAX_FREQ / freq_resolution)
+        spectrogram = spectrogram[:max_bin, :]
+
+    # 2. Resize to target shape if necessary
+    if spectrogram.shape != TARGET_SHAPE:
+        zoom_factors = (TARGET_SHAPE[0] / spectrogram.shape[0], TARGET_SHAPE[1] / spectrogram.shape[1])
+        spectrogram = zoom(spectrogram, zoom_factors, order=1)
     
-    # Resize to target shape if necessary
-    if S_db.shape != TARGET_SHAPE:
-        zoom_factors = (TARGET_SHAPE[0] / S_db.shape[0], TARGET_SHAPE[1] / S_db.shape[1])
-        S_db = zoom(S_db, zoom_factors, order=1)
+    # 3. Normalize using training statistics
+    S_normalized = (spectrogram - mean) / (std + 1e-8)
     
-    # Normalize using training statistics
-    S_normalized = (S_db - mean) / (std + 1e-8)
-    
-    # Add batch and channel dimensions
+    # 4. Add batch and channel dimensions
     S_input = np.expand_dims(S_normalized, axis=(0, -1))
     
     return S_input
@@ -121,19 +143,9 @@ def get_spectrogram_for_display(S_db: np.ndarray, Fs: int) -> dict:
     --------
     dict : Display data including spectrogram, time axis, frequency axis
     """
-    # Calculate time and frequency axes
-    num_frames = S_db.shape[1]
-    total_time = (FRAME_NUM * CHIRP_PERIOD) / 1000.0  # seconds
-    
-    time_axis = np.linspace(0, total_time, num_frames)
-    freq_axis = np.linspace(0, Fs / 2, S_db.shape[0])
-    
     return {
         'spectrogram': S_db,
-        'time_axis': time_axis,
-        'freq_axis': freq_axis,
-        'sample_rate': Fs,
-        'total_time': total_time
+        'sample_rate': Fs
     }
 
 
@@ -141,7 +153,7 @@ if __name__ == "__main__":
     # Test with a sample file
     import matplotlib.pyplot as plt
     
-    test_file = "../pipe-data/pipe-mixed-25-64-256-20/adc_data_11.bin"
+    #test_file = "../pipe-data/pipe-mixed-25-64-256-20/adc_data_11.bin"
     if os.path.exists(test_file):
         S_db, Fs = generate_spectrogram(test_file)
         print(f"Spectrogram shape: {S_db.shape}")

@@ -70,35 +70,24 @@ class ModelInference:
             
             print(f"Loading model from: {MODEL_PATH}")
             
-            # Try to load with the custom FreqAvgPoolLayer substitution
-            # First, we need to load the model architecture and weights separately
-            # then reconstruct with proper output_shape
-            
-            # Attempt 1: Load with Lambda wrapper that has compute_output_shape
+            # Robust loading strategy for Lambda layers
             class FreqAvgPoolLambda(tf.keras.layers.Layer):
                 """Wrapper for freq_avg_pool that properly computes output shape."""
                 def __init__(self, **kwargs):
                     # Filter out keys that come from Lambda layer but aren't valid for Layer
-                    # The original Lambda config includes 'function', 'arguments', 'dtype' (with nested config)
                     invalid_keys = ['function', 'arguments', 'dtype', 'trainable', 'output_shape', 'output_shape_type', 'mask']
                     for key in invalid_keys:
                         kwargs.pop(key, None)
-                    
-                    # Extract name or use default
                     name = kwargs.pop('name', 'freq_avg_pool')
                     super().__init__(name=name, **kwargs)
                 
                 def call(self, inputs, mask=None):
-                    # Accept mask argument to be compatible with Lambda layer's inbound_nodes
                     return tf.reduce_mean(inputs, axis=2)
                 
                 def compute_output_shape(self, input_shape):
-                    # Input: (batch, time, freq, channels)
-                    # Output: (batch, time, channels) - removes freq dimension
                     return tf.TensorShape([input_shape[0], input_shape[1], input_shape[3]])
                 
                 def get_config(self):
-                    # Return only the name for clean serialization
                     return {'name': self.name}
                 
                 @classmethod
@@ -110,7 +99,7 @@ class ModelInference:
                 'FreqAvgPoolLambda': FreqAvgPoolLambda,
             }
             
-            # Load model by reconstructing architecture
+            # Load model by reconstructing architecture manually to bypass Lambda issues
             import zipfile
             import json
             
@@ -119,37 +108,31 @@ class ModelInference:
                 config_json = z.read('config.json').decode('utf-8')
                 model_config = json.loads(config_json)
             
-            # Find and replace the Lambda layer with our custom layer
+            # Find and replace the Lambda layer with our custom layer in the config
             def replace_lambda_in_config(config):
                 """Recursively find and replace freq_avg_pool Lambda layers."""
                 if isinstance(config, dict):
-                    # Check if this is the Lambda layer we're looking for
                     if config.get('class_name') == 'Lambda':
                         layer_config = config.get('config', {})
                         if layer_config.get('name') == 'freq_avg_pool':
-                            # Get and clean inbound_nodes - remove mask from kwargs
                             inbound_nodes = config.get('inbound_nodes', [])
                             cleaned_nodes = []
                             for node in inbound_nodes:
                                 cleaned_node = dict(node)
                                 if 'kwargs' in cleaned_node:
-                                    # Remove mask from kwargs if present
                                     cleaned_kwargs = {k: v for k, v in cleaned_node['kwargs'].items() if k != 'mask'}
                                     cleaned_node['kwargs'] = cleaned_kwargs
                                 cleaned_nodes.append(cleaned_node)
                             
-                            # Replace with our custom layer, preserving essential keys
                             return {
                                 'class_name': 'FreqAvgPoolLambda',
                                 'config': {'name': 'freq_avg_pool'},
                                 'module': None,
                                 'registered_name': 'FreqAvgPoolLambda',
-                                # Preserve these keys from the original Lambda layer
                                 'name': config.get('name', 'freq_avg_pool'),
                                 'inbound_nodes': cleaned_nodes,
                                 'build_config': config.get('build_config', {})
                             }
-                    # Recursively process all values
                     return {k: replace_lambda_in_config(v) for k, v in config.items()}
                 elif isinstance(config, list):
                     return [replace_lambda_in_config(item) for item in config]
@@ -157,8 +140,6 @@ class ModelInference:
             
             modified_config = replace_lambda_in_config(model_config)
             
-            # Remove compile_config since we only need inference (not training)
-            # This avoids needing to register custom metrics like F1Score
             if 'compile_config' in modified_config:
                 del modified_config['compile_config']
             
@@ -168,12 +149,10 @@ class ModelInference:
                 custom_objects=custom_objects
             )
             
-            # Load weights from the .keras file
+            # Load weights
             with zipfile.ZipFile(MODEL_PATH, 'r') as z:
-                # Extract weights to a temp location
                 import tempfile
                 with tempfile.TemporaryDirectory() as tmpdir:
-                    # Extract model.weights.h5
                     z.extract('model.weights.h5', tmpdir)
                     weights_path = os.path.join(tmpdir, 'model.weights.h5')
                     self.model.load_weights(weights_path)
@@ -218,6 +197,9 @@ class ModelInference:
         """
         if not self._loaded:
             raise RuntimeError("Model not loaded. Call load() first.")
+        
+        # Debug: Check input stats
+        print(f"[ModelInference] Input stats - Min: {np.min(spectrogram):.4f}, Max: {np.max(spectrogram):.4f}, Mean: {np.mean(spectrogram):.4f}")
         
         # Run prediction
         predictions = self.model.predict(spectrogram, verbose=0)

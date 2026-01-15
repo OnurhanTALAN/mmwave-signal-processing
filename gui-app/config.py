@@ -3,6 +3,7 @@ Configuration for Radar GUI Application
 """
 
 import os
+import sys
 
 # =============================================================================
 # RADAR PARAMETERS (must match Lua script)
@@ -21,6 +22,8 @@ MS_PER_RECORD = FRAME_NUM * CHIRP_PERIOD  # 2200 ms
 # =============================================================================
 N_FFT = 4096
 HOP_LENGTH = 256
+TRIM_SECONDS = 0.15  # Time to trim from start and end (seconds)
+MAX_FREQ = 512       # Maximum frequency to keep (Hz)
 
 # =============================================================================
 # MODEL CONFIGURATION
@@ -28,8 +31,17 @@ HOP_LENGTH = 256
 # Model9: CNN-LSTM Multi-output model
 # - presence: binary (vibration vs no vibration)
 # - trend: 3-class (constant, increasing, decreasing)
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "models", "model9", "best_cnn_lstm.keras")
-NORM_STATS_PATH = os.path.join(os.path.dirname(__file__), "..", "models", "model9", "best_cnn_lstm_norm_stats.npy")
+# Check if running as compiled executable
+if getattr(sys, 'frozen', False):
+    # If frozen, logic depends on where we bundle the data
+    # We will bundle 'models' folder at the root level of the temp directory
+    BASE_PATH = sys._MEIPASS
+    MODEL_PATH = os.path.join(BASE_PATH, "models", "model6", "best_cnn_lstm.keras")
+    NORM_STATS_PATH = os.path.join(BASE_PATH, "models", "model6", "best_cnn_lstm_norm_stats.npy")
+else:
+    # If running as script
+    MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "models", "model6", "best_cnn_lstm.keras")
+    NORM_STATS_PATH = os.path.join(os.path.dirname(__file__), "..", "models", "model6", "best_cnn_lstm_norm_stats.npy")
 
 # Model input shape
 INPUT_SHAPE = (163, 97, 1)

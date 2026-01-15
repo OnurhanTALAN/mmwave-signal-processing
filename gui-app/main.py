@@ -8,6 +8,8 @@ and vibration classification using CNN-LSTM model.
 import sys
 import os
 import numpy as np
+import librosa
+import librosa.display
 
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -24,7 +26,7 @@ from matplotlib.figure import Figure
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(__file__))
 
-from config import TREND_LABELS, PRESENCE_LABELS
+from config import TREND_LABELS, PRESENCE_LABELS, HOP_LENGTH
 from radar_worker import RadarWorker
 from motor_controller import get_motor_controller
 
@@ -70,23 +72,18 @@ class SpectrogramCanvas(FigureCanvas):
         self.axes.set_facecolor('#1e1e2e')
         
         spectrogram = data['spectrogram']
-        time_axis = data['time_axis']
-        freq_axis = data['freq_axis']
         
-        # Filter to 0-512 Hz range
-        max_freq = 512
-        freq_mask = freq_axis <= max_freq
-        freq_axis_filtered = freq_axis[freq_mask]
-        spectrogram_filtered = spectrogram[freq_mask, :]
-        
-        # Plot spectrogram (only 0-512 Hz)
-        im = self.axes.imshow(
-            spectrogram_filtered,
-            aspect='auto',
-            origin='lower',
-            extent=[time_axis[0], time_axis[-1], freq_axis_filtered[0], freq_axis_filtered[-1]],
-            cmap='viridis'
+        # Use librosa.display.specshow
+        im = librosa.display.specshow(
+            spectrogram,
+            sr=data['sample_rate'],
+            hop_length=HOP_LENGTH,
+            x_axis='time',
+            y_axis='log',
+            ax=self.axes,
         )
+        
+        self.axes.set_ylim(0, 512)
         
         self.axes.set_xlabel('Zaman (s)', color='white')
         self.axes.set_ylabel('Frekans (Hz)', color='white')
@@ -96,7 +93,7 @@ class SpectrogramCanvas(FigureCanvas):
             spine.set_color('white')
         
         # Add colorbar
-        self._colorbar = self.fig.colorbar(im, ax=self.axes, label='dB')
+        self._colorbar = self.fig.colorbar(im, ax=self.axes, format='%+2.0f dB')
         self._colorbar.ax.yaxis.set_tick_params(color='white')
         self._colorbar.ax.yaxis.label.set_color('white')
         for t in self._colorbar.ax.yaxis.get_ticklabels():
@@ -266,6 +263,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.worker = None
         self.thread = None
+        self._selected_motor_mode = 'none'  # Store selected mode
         self.setup_ui()
         self.setup_worker()
     
@@ -320,12 +318,18 @@ class MainWindow(QMainWindow):
         splitter.addWidget(left_panel)
         
         # Right panel - Results
+        # Right panel - Results
         self.result_panel = ResultPanel()
-        self.result_panel.setMinimumWidth(300)
-        self.result_panel.setMaximumWidth(400)
+        self.result_panel.setMinimumWidth(250)  # Slightly reduced minimum width
+        # Removed MaximumWidth to allow resizing
         splitter.addWidget(self.result_panel)
         
-        splitter.setSizes([800, 350])
+        # Configure splitter behavior
+        splitter.setCollapsible(1, False)  # Prevent right panel from collapsing completely
+        splitter.setStretchFactor(0, 1)    # Let the spectrogram expand more
+        splitter.setStretchFactor(1, 0)    # Keep result panel near its minimum/content size
+        
+        splitter.setSizes([800, 300])
         main_layout.addWidget(splitter, 1)
         
         # Control panel
@@ -442,7 +446,7 @@ class MainWindow(QMainWindow):
         self.btn_constant.setStyleSheet(motor_btn_style.format(
             bg_color='#89b4fa', hover_color='#b4befe', checked_color='#74c7ec'
         ))
-        self.btn_constant.clicked.connect(lambda: self.set_motor_mode('constant'))
+        self.btn_constant.clicked.connect(lambda: self.select_motor_mode('constant'))
         motor_layout.addWidget(self.btn_constant)
         
         # Increasing vibration button
@@ -452,7 +456,7 @@ class MainWindow(QMainWindow):
         self.btn_increasing.setStyleSheet(motor_btn_style.format(
             bg_color='#a6e3a1', hover_color='#b5e8b0', checked_color='#94e2d5'
         ))
-        self.btn_increasing.clicked.connect(lambda: self.set_motor_mode('increasing'))
+        self.btn_increasing.clicked.connect(lambda: self.select_motor_mode('increasing'))
         motor_layout.addWidget(self.btn_increasing)
         
         # Decreasing vibration button
@@ -462,7 +466,7 @@ class MainWindow(QMainWindow):
         self.btn_decreasing.setStyleSheet(motor_btn_style.format(
             bg_color='#fab387', hover_color='#f9c597', checked_color='#f9e2af'
         ))
-        self.btn_decreasing.clicked.connect(lambda: self.set_motor_mode('decreasing'))
+        self.btn_decreasing.clicked.connect(lambda: self.select_motor_mode('decreasing'))
         motor_layout.addWidget(self.btn_decreasing)
         
         # No vibration button
@@ -473,7 +477,7 @@ class MainWindow(QMainWindow):
         self.btn_none.setStyleSheet(motor_btn_style.format(
             bg_color='#f38ba8', hover_color='#eba0ac', checked_color='#f38ba8'
         ))
-        self.btn_none.clicked.connect(lambda: self.set_motor_mode('none'))
+        self.btn_none.clicked.connect(lambda: self.select_motor_mode('none'))
         motor_layout.addWidget(self.btn_none)
         
         # Motor connection status
@@ -521,6 +525,11 @@ class MainWindow(QMainWindow):
         self.spectrogram_canvas.clear_spectrogram()
         self.result_panel.clear_results()
         
+        # Start motor with selected mode
+        if hasattr(self, 'motor_controller') and self.motor_controller.is_connected():
+            self.motor_controller.set_mode(self._selected_motor_mode)
+            self.status_label.setText(f"Motor başlatıldı: {self._selected_motor_mode}")
+        
         # Use QMetaObject.invokeMethod to call method in worker thread
         from PyQt6.QtCore import QMetaObject, Qt, Q_ARG
         QMetaObject.invokeMethod(self.worker, "start_recording", Qt.ConnectionType.QueuedConnection)
@@ -545,12 +554,20 @@ class MainWindow(QMainWindow):
     
     def on_recording_finished(self):
         """Handle recording finished signal."""
+        # Stop motor when recording is finished
+        if hasattr(self, 'motor_controller') and self.motor_controller.is_connected():
+            self.motor_controller.set_mode('none')
+        
         self.record_btn.setEnabled(True)
         self.status_label.setText("Tamamlandı ✓")
         self.status_label.setStyleSheet("color: #a6e3a1; border: none;")
     
     def on_error(self, message: str):
         """Handle error signal."""
+        # Stop motor on error
+        if hasattr(self, 'motor_controller') and self.motor_controller.is_connected():
+            self.motor_controller.set_mode('none')
+            
         self.record_btn.setEnabled(True)
         self.status_label.setText(f"Hata: {message}")
         self.status_label.setStyleSheet("color: #f38ba8; border: none;")
@@ -577,25 +594,21 @@ class MainWindow(QMainWindow):
             self.motor_status_label.setText("Motor: Bağlantı Yok")
             self.motor_status_label.setStyleSheet("color: #f38ba8; border: none;")
     
-    def set_motor_mode(self, mode: str):
-        """Set the motor vibration mode."""
+    def select_motor_mode(self, mode: str):
+        """Select the motor vibration mode (will be applied on record start)."""
+        self._selected_motor_mode = mode
+        
         # Update button states
         for btn_mode, btn in self.motor_buttons.items():
             btn.setChecked(btn_mode == mode)
         
-        # Send command to motor
-        if self.motor_controller.is_connected():
-            self.motor_controller.set_mode(mode)
-            mode_labels = {
-                'constant': 'Sabit Titreşim',
-                'increasing': 'Artan Titreşim',
-                'decreasing': 'Azalan Titreşim',
-                'none': 'Motor Durduruldu'
-            }
-            self.motor_status_label.setText(f"Motor: {mode_labels.get(mode, mode)}")
-        else:
-            self.motor_status_label.setText("Motor: Bağlantı Yok")
-            self.motor_status_label.setStyleSheet("color: #f38ba8; border: none;")
+        mode_labels = {
+            'constant': 'Sabit Titreşim',
+            'increasing': 'Artan Titreşim',
+            'decreasing': 'Azalan Titreşim',
+            'none': 'Motor Kapalı'
+        }
+        self.motor_status_label.setText(f"Seçili: {mode_labels.get(mode, mode)}")
 
 
 def main():

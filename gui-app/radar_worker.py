@@ -97,6 +97,15 @@ class RadarWorker(QObject):
             
             if not model.is_loaded():
                 print("[RadarWorker] Model not loaded, loading now...")
+                
+                # Enable unsafe deserialization for Lambda layers (fix for recent Keras versions)
+                try:
+                    import keras
+                    if hasattr(keras.config, 'enable_unsafe_deserialization'):
+                        keras.config.enable_unsafe_deserialization()
+                except:
+                    pass
+                    
                 if not model.load():
                     self.error.emit("Model yüklenemedi!")
                     return
